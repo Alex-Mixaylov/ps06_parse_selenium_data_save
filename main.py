@@ -1,5 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import csv
 import time
 import logging
@@ -14,13 +16,13 @@ class ElectricalApplianceParser:
         self.driver = webdriver.Chrome()
         self.url = "https://www.divan.ru/category/svet"
         self.light_list = []
-        self.page_count = 0  # Счетчик страниц
 
     def parse(self):
         # Открытие начальной страницы
         self.driver.get(self.url)
-
+        wait = WebDriverWait(self.driver, 30)
         page_number = 1
+
         while True:
             logging.info(f'Парсинг страницы номер {page_number}')
 
@@ -30,6 +32,11 @@ class ElectricalApplianceParser:
                 try:
                     name = light.find_element(By.CSS_SELECTOR, 'div.lsooF span').text
                     price = light.find_element(By.CSS_SELECTOR, 'div.pY3d2 span.ui-LD-ZU.KIkOH').text
+                except Exception as e:
+                    logging.error(f'Ошибка при получении наименования или цены: {e}')
+                    continue
+
+                try:
                     price_old = light.find_element(By.CSS_SELECTOR, 'div.pY3d2 span.ui-LD-ZU.ui-SVNym.bSEDs').text
                 except Exception as e:
                     price_old = '0'
@@ -50,23 +57,24 @@ class ElectricalApplianceParser:
                     'sale': sale,
                     'url': url
                 }
-                self.light_list.append(item)
+                if item not in self.light_list:  # Избежание дублирования
+                    self.light_list.append(item)
 
             logging.info(f'На странице номер {page_number} спарсено товаров: {len(lights)}')
-            self.page_count += 1  # Увеличиваем счетчик страниц
 
-            # Поиск ссылки на следующую страницу и переход на неё
+            # Прокрутка страницы вниз для подгрузки новых товаров
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(10)  # ожидание загрузки страницы
+
+            # Ожидание загрузки новых элементов
             try:
-                next_button = self.driver.find_element(By.CSS_SELECTOR, 'a.ui-GPFV8.ui-BjeX1.ui-gI0j8.PaginationLink')
-                if next_button:
-                    next_button.click()
-                    time.sleep(5)  # ожидание загрузки страницы
-                    page_number += 1
-                else:
-                    break
+                new_light_count = wait.until(
+                    lambda driver: len(driver.find_elements(By.CSS_SELECTOR, 'div._Ud0k')) > len(lights))
             except Exception as e:
-                logging.error(f'Ошибка при переходе на следующую страницу: {e}')
+                logging.info('Новые товары не найдены, завершение парсинга')
                 break
+
+            page_number += 1
 
     def save_to_csv(self):
         # Сохранение данных в файл CSV
@@ -77,7 +85,6 @@ class ElectricalApplianceParser:
             dict_writer.writerows(self.light_list)
         logging.info('Данные успешно сохранены в lights.csv')
         logging.info(f'Общее количество спарсенных товаров: {len(self.light_list)}')
-        logging.info(f'Общее количество спарсенных страниц: {self.page_count}')
 
     def run(self):
         # Запуск процесса парсинга и сохранения данных
