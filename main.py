@@ -1,9 +1,8 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options
 import csv
-import time
 import logging
 
 # Настройка логирования
@@ -12,19 +11,34 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class ElectricalApplianceParser:
     def __init__(self):
-        # Инициализация веб-драйвера и начальных параметров
-        self.driver = webdriver.Chrome()
-        self.url = "https://www.divan.ru/category/svet"
+        # Настройка опций для запуска браузера в фоновом режиме
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Запуск без открытия окна браузера
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        # Указание пути к chromedriver
+        service = ChromeService(executable_path=r"C:\Windows\chromedriver.exe")
+
+        # Инициализация веб-драйвера
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        self.urls = [
+            "https://www.divan.ru/category/svet",
+            "https://www.divan.ru/category/svet/page-2",
+            "https://www.divan.ru/category/svet/page-3",
+            "https://www.divan.ru/category/svet/page-4",
+            "https://www.divan.ru/category/svet/page-5",
+            "https://www.divan.ru/category/svet/page-6",
+            "https://www.divan.ru/category/svet/page-7"
+        ]
         self.light_list = []
 
     def parse(self):
-        # Открытие начальной страницы
-        self.driver.get(self.url)
-        wait = WebDriverWait(self.driver, 30)
-        page_number = 1
-
-        while True:
-            logging.info(f'Парсинг страницы номер {page_number}')
+        for url in self.urls:
+            logging.info(f'Парсинг страницы: {url}')
+            self.driver.get(url)
 
             # Парсинг товаров на текущей странице
             lights = self.driver.find_elements(By.CSS_SELECTOR, 'div._Ud0k')
@@ -60,21 +74,7 @@ class ElectricalApplianceParser:
                 if item not in self.light_list:  # Избежание дублирования
                     self.light_list.append(item)
 
-            logging.info(f'На странице номер {page_number} спарсено товаров: {len(lights)}')
-
-            # Прокрутка страницы вниз для подгрузки новых товаров
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(10)  # ожидание загрузки страницы
-
-            # Ожидание загрузки новых элементов
-            try:
-                new_light_count = wait.until(
-                    lambda driver: len(driver.find_elements(By.CSS_SELECTOR, 'div._Ud0k')) > len(lights))
-            except Exception as e:
-                logging.info('Новые товары не найдены, завершение парсинга')
-                break
-
-            page_number += 1
+            logging.info(f'На странице {url} спарсено товаров: {len(lights)}')
 
     def save_to_csv(self):
         # Сохранение данных в файл CSV
